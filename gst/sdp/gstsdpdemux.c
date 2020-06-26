@@ -77,6 +77,7 @@ enum
 #define DEFAULT_TIMEOUT          10000000
 #define DEFAULT_LATENCY_MS       200
 #define DEFAULT_REDIRECT         TRUE
+#define DEFAULT_RTCP             TRUE
 
 enum
 {
@@ -84,7 +85,8 @@ enum
   PROP_DEBUG,
   PROP_TIMEOUT,
   PROP_LATENCY,
-  PROP_REDIRECT
+  PROP_REDIRECT,
+  PROP_RTCP
 };
 
 static void gst_sdp_demux_finalize (GObject * object);
@@ -148,6 +150,12 @@ gst_sdp_demux_class_init (GstSDPDemuxClass * klass)
       g_param_spec_boolean ("redirect", "Redirect",
           "Sends a redirection message instead of using a custom session element",
           DEFAULT_REDIRECT,
+          G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property (gobject_class, PROP_RTCP,
+      g_param_spec_boolean ("rtcp", "RTCP",
+          "Enable RTCP",
+          DEFAULT_RTCP,
           G_PARAM_READWRITE | G_PARAM_CONSTRUCT | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_static_pad_template (gstelement_class, &sinktemplate);
@@ -218,6 +226,9 @@ gst_sdp_demux_set_property (GObject * object, guint prop_id,
     case PROP_REDIRECT:
       demux->redirect = g_value_get_boolean (value);
       break;
+    case PROP_RTCP:
+      demux->rtcp = g_value_get_boolean (value);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -244,6 +255,9 @@ gst_sdp_demux_get_property (GObject * object, guint prop_id, GValue * value,
       break;
     case PROP_REDIRECT:
       g_value_set_boolean (value, demux->redirect);
+      break;
+    case PROP_RTCP:
+      g_value_set_boolean (value, demux->rtcp);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -779,7 +793,7 @@ gst_sdp_demux_stream_configure_udp (GstSDPDemux * demux, GstSDPStream * stream)
   }
 
   /* creating another UDP source */
-  if (stream->rtcp_port != -1) {
+  if (demux->rtcp && stream->rtcp_port != -1) {
     GST_DEBUG_OBJECT (demux, "receiving RTCP from %s:%d", destination,
         stream->rtcp_port);
     uri = g_strdup_printf ("udp://%s:%d", destination, stream->rtcp_port);
@@ -823,6 +837,10 @@ gst_sdp_demux_stream_configure_udp_sink (GstSDPDemux * demux,
   gint port;
   GSocket *socket;
   gchar *destination, *uri, *name;
+
+  if (!demux->rtcp) {
+    return TRUE;
+  }
 
   /* get destination and port */
   port = stream->rtcp_port;
@@ -1167,7 +1185,9 @@ gst_sdp_demux_start (GstSDPDemux * demux)
 
       /* configure target state on udp sources */
       gst_element_set_state (stream->udpsrc[0], demux->target);
-      gst_element_set_state (stream->udpsrc[1], demux->target);
+      if (stream->udpsrc[1]) {
+        gst_element_set_state (stream->udpsrc[1], demux->target);
+      }
     }
   }
   GST_SDP_STREAM_UNLOCK (demux);

@@ -99,6 +99,7 @@ struct _GstSDPDemux {
   guint64           udp_timeout;
   guint             latency;
   gboolean          redirect;
+  gboolean          rtcp;
 
   /* session management */
   GstElement      *session;
